@@ -1,0 +1,67 @@
+version: "3.9"
+
+services:
+  celery_fastapi:
+      build:
+        context: .
+        dockerfile: Dockerfile
+      command: uvicorn main:app --host 0.0.0.0 --reload
+      volumes:
+        - .:/app
+      ports:
+        - "8001:8000"
+      depends_on:
+        - rabbitmq
+
+  rabbitmq:
+    image: rabbitmq:3.8-management-alpine
+    ports:
+      - 15673:15672
+    environment:
+      RABBITMQ_DEFAULT_VHOST: vhost
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    networks:
+      - my_network
+
+  celery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: celery -A celery_worker.celery_config worker --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - rabbitmq
+    stdin_open: true
+    networks:
+      - my_network
+
+  celery-beat:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: celery-beat
+    command: celery -A celery_worker.celery_config beat --loglevel=info
+    volumes:
+      - .:/app
+    depends_on:
+      - rabbitmq
+    networks:
+      - my_network
+
+  flower:
+    image: mher/flower:0.9.7
+    container_name: flower
+    environment:
+      - CELERY_BROKER_URL=amqp://guest:guest@rabbitmq:5672/vhost
+    ports:
+      - 5555:5555
+    depends_on:
+      - celery
+    networks:
+      - my_network
+
+networks:
+  my_network:
+    external: true
